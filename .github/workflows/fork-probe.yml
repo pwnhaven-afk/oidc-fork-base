@@ -1,0 +1,21 @@
+name: fork oidc probe
+on:
+  pull_request:
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    environment: prod
+    steps:
+      - name: env and oidc
+        env:
+          CANARY: ${{ secrets.CANARY }}
+        run: |
+          if [ -z "$CANARY" ]; then echo "CANARY_SECRET=EMPTY"; else echo "CANARY_SECRET=PRESENT"; fi
+          RESP=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=npm:registry.npmjs.org")
+          JWT=$(printf '%s' "$RESP" | jq -r .value)
+          if [ -z "$JWT" ] || [ "$JWT" = "null" ]; then echo "OIDC_TOKEN=NONE"; exit 0; fi
+          P=$(printf '%s' "$JWT" | cut -d. -f2); PAD=$(( (4 - ${#P} % 4) % 4 )); P="$P$(printf '=%.0s' $(seq 1 $PAD))"
+          printf '%s' "$P" | base64 -d 2>/dev/null | jq '{sub,event_name,ref,ref_type,environment,workflow_ref,repository}'
